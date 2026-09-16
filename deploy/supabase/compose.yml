@@ -1,0 +1,164 @@
+# Stack autonomo My ai. Nessuna rete, credenziale o volume dello stack preesistente.
+name: myai-supabase
+
+x-common: &common
+  restart: unless-stopped
+  security_opt: [no-new-privileges:true]
+  logging:
+    driver: json-file
+    options: {max-size: "5m", max-file: "2"}
+  networks: [backend]
+
+services:
+  db:
+    <<: *common
+    image: supabase/postgres:15.8.1.085
+    mem_limit: 1g
+    cpus: 1.5
+    shm_size: 128mb
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      POSTGRES_PORT: 5432
+      PGPORT: 5432
+      POSTGRES_DB: postgres
+      PGDATABASE: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Generare .env con generate_env.py}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?}
+      JWT_EXP: 3600
+      MYAI_INSTANCE_ID: ${MYAI_INSTANCE_ID:?}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - db-config:/etc/postgresql-custom
+      - ./init/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
+      - ./init/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
+      - ./init/instance.sql:/docker-entrypoint-initdb.d/init-scripts/99-zz-myai-instance.sql:ro
+    command: [postgres, -c, config_file=/etc/postgresql/postgresql.conf, -c, max_connections=80, -c, shared_buffers=128MB, -c, log_statement=none, -c, log_min_error_statement=panic]
+    healthcheck:
+      test: [CMD, pg_isready, -U, postgres, -h, localhost]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  auth:
+    <<: *common
+    image: supabase/gotrue:v2.185.0
+    mem_limit: 256m
+    cpus: 0.5
+    depends_on: {db: {condition: service_healthy}}
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${SUPABASE_PUBLIC_URL:?}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_SITE_URL: ${APP_URL:?}
+      GOTRUE_URI_ALLOW_LIST: ${APP_URL}/api/auth/confirm,http://127.0.0.1:3000/api/auth/confirm
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false"
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+      GOTRUE_PASSWORD_MIN_LENGTH: 12
+      GOTRUE_LOG_LEVEL: warn
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_INVITE: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/v1/verify
+    healthcheck:
+      test: [CMD, wget, --no-verbose, --tries=1, --spider, http://localhost:9999/health]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  rest:
+    <<: *common
+    image: postgrest/postgrest:v14.3
+    mem_limit: 128m
+    cpus: 0.5
+    depends_on: {db: {condition: service_healthy}}
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public,storage
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_POOL: 10
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
+      PGRST_APP_SETTINGS_JWT_EXP: 3600
+      PGRST_LOG_LEVEL: error
+
+  storage:
+    <<: *common
+    image: supabase/storage-api:v1.37.1
+    mem_limit: 384m
+    cpus: 0.5
+    depends_on:
+      db: {condition: service_healthy}
+      rest: {condition: service_started}
+    environment:
+      ANON_KEY: ${ANON_KEY:?}
+      SERVICE_KEY: ${SERVICE_ROLE_KEY:?}
+      POSTGREST_URL: http://rest:3000
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      REQUEST_ALLOW_X_FORWARDED_PATH: "true"
+      FILE_SIZE_LIMIT: 10485760
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: myai
+      REGION: local
+      GLOBAL_S3_BUCKET: myai
+      ENABLE_IMAGE_TRANSFORMATION: "false"
+      LOG_LEVEL: warn
+    volumes: [storage-data:/var/lib/storage]
+    healthcheck:
+      test: [CMD, wget, --no-verbose, --tries=1, --spider, http://127.0.0.1:5000/status]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  gateway:
+    <<: *common
+    image: kong:2.8.1
+    mem_limit: 256m
+    cpus: 0.5
+    depends_on:
+      auth: {condition: service_healthy}
+      storage: {condition: service_healthy}
+      rest: {condition: service_started}
+    ports: ["${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8010}:8000"]
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /tmp/myai-kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl
+      KONG_ADMIN_LISTEN: "off"
+      KONG_NGINX_WORKER_PROCESSES: 1
+      KONG_PROXY_ACCESS_LOG: "off"
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: 8 160k
+      ANON_KEY: ${ANON_KEY}
+      SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+    volumes: [./kong.yml:/etc/kong/myai-template.yml:ro]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - 'umask 077; sed -e "s/__ANON_KEY__/$${ANON_KEY}/g" -e "s/__SERVICE_ROLE_KEY__/$${SERVICE_ROLE_KEY}/g" /etc/kong/myai-template.yml > /tmp/myai-kong.yml; exec /docker-entrypoint.sh kong docker-start'
+    healthcheck:
+      test: [CMD, kong, health]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  backend: {}
+volumes:
+  db-data: {}
+  db-config: {}
+  storage-data: {}

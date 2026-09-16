@@ -1,0 +1,30 @@
+# Avvio in produzione su un host Docker (ad es. LXC 110, NON sul LXC 105/supabase).
+# Il database è esterno (progetto Supabase dedicato): nessun container PostgreSQL qui.
+# Requisiti: Docker + build dal sorgente (nessuna immagine pubblicata).
+services:
+  my-ai:
+    build: .
+    image: my-ai:local
+    container_name: my-ai
+    restart: unless-stopped
+    # Nessuna porta sull'host (3000 è occupata da AdGuard): NPM raggiunge il container
+    # direttamente sulla rete homelab.
+    env_file: .env
+    environment:
+      HOSTNAME: 0.0.0.0 # Anche il healthcheck su 127.0.0.1 deve raggiungere Next.js.
+    networks:
+      - homelab
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+networks:
+  homelab:
+    external: true

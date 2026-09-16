@@ -1,0 +1,46 @@
+{
+  "name": "my-ai-arcipelago",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "node scripts/start.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:authenticated": "node scripts/test-authenticated.mjs",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
+    "lucide-react": "^0.577.0",
+    "mammoth": "^1.12.2",
+    "next": "^16.3.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "server-only": "^0.0.1",
+    "sharp": "^0.35.4",
+    "unpdf": "^1.8.1",
+    "yauzl": "^3.4.0",
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.4.0",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.20.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/yauzl": "^3.4.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^16.3.5",
+    "npm-check-updates": "^22.2.9",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

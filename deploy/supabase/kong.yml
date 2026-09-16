@@ -1,0 +1,60 @@
+_format_version: '2.1'
+_transform: true
+
+consumers:
+  - username: anon
+    keyauth_credentials:
+      - key: __ANON_KEY__
+    acls:
+      - group: anon
+  - username: service_role
+    keyauth_credentials:
+      - key: __SERVICE_ROLE_KEY__
+    acls:
+      - group: admin
+
+services:
+  - name: auth-verify
+    url: http://auth:9999/verify
+    routes:
+      - name: auth-verify
+        paths: [/auth/v1/verify]
+        strip_path: true
+  - name: auth
+    url: http://auth:9999/
+    routes:
+      - name: auth
+        paths: [/auth/v1/]
+        strip_path: true
+    plugins:
+      - name: key-auth
+        config: {hide_credentials: false}
+      - name: acl
+        config: {hide_groups_header: true, allow: [anon, admin]}
+  - name: rest
+    url: http://rest:3000/
+    routes:
+      - name: rest
+        paths: [/rest/v1/]
+        strip_path: true
+    plugins:
+      - name: key-auth
+        config: {hide_credentials: true}
+      - name: acl
+        config: {hide_groups_header: true, allow: [anon, admin]}
+  - name: storage
+    url: http://storage:5000/
+    routes:
+      - name: storage
+        paths: [/storage/v1/]
+        strip_path: true
+    # Storage verifica il proprio JWT; le URL firmate non hanno header apikey.
+
+plugins:
+  - name: cors
+    config:
+      origins: ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://myai.terraleonum.com', 'https://myai.terraleonum.duckdns.org']
+      credentials: true
+      headers: [Authorization, apikey, Content-Type, X-Client-Info, X-Upsert]
+      exposed_headers: [Content-Range, Range]
+      methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD]

@@ -1,0 +1,17 @@
+import { z } from 'zod';
+export const uuid = z.string().uuid();
+export const categorySchema = z.enum(['scrivere', 'cucinare', 'capire', 'desideri']);
+const text = (max = 5000) => z.string().trim().max(max);
+export const memorySchema = z.object({ title: text(150).min(1), content: text(65000).min(1), category: categorySchema, kind: z.enum(['content', 'preference', 'idea', 'discovery']), origin: text(250).default('Inserito da te'), confirmed: z.boolean().default(false) }).refine(v => v.kind !== 'preference' || v.confirmed, { message: 'Conferma esplicitamente questa preferenza.' });
+export const refsSchema = z.array(z.object({ id: uuid, source: z.enum(['memory', 'message', 'document', 'wish']) })).max(6).default([]);
+export const chatSchema = z.object({ conversation_id: uuid, content: text(12000).min(1), category: categorySchema, refs: refsSchema, web: z.boolean().default(false) });
+export const videoSchema = z.object({ request_id: uuid, conversation_id: uuid, prompt: text(2000).min(1), category: categorySchema, confirmed: z.literal(true) }).strict();
+export const wishSchema = z.object({ title: text(150).min(1), motivation: text().default(''), outcome: text().default(''), timeframe: text(250).default(''), resources: text().default(''), constraints: text().default(''), unknowns: text().default(''), next_action: text(1000).default(''), obstacles: text().default(''), decisions: text().default(''), milestones: z.array(z.object({ id: uuid, title: text(250).min(1), done: z.boolean() })).max(30).default([]), status: z.enum(['active', 'paused', 'abandoned']).default('active'), image_document_id: uuid.nullable().default(null) });
+export const preferencesSchema = z.object({ display_name: text(60), reduced_motion: z.boolean(), island_view: z.enum(['illustrated', 'list']), agent_cycles: z.number().int().min(0).max(2), agent_budget: z.number().min(0.02).max(1), agent_seconds: z.number().int().min(30).max(600) });
+export const credentialsSchema = z.object({ email: z.email().max(254), password: z.string().min(12).max(128) });
+export const loginSchema = z.object({ email: z.email().max(254), password: z.string().min(1).max(128) });
+export const coordinatorSchema = z.object({ objective: text(2000).min(1), roles: z.array(z.enum(['Progettista', 'Revisore', 'Analista degli scenari', 'Verificatore'])).max(4), needsDecision: z.boolean(), questions: z.array(text(500)).max(6) });
+export const resultSchema = z.object({ proposal: text(14000).min(1), questions: z.array(text(800)).max(8), choice: text(3000) });
+export const artifactSchema = z.object({ conversation_id: uuid, category: categorySchema, prompt: text(2000).min(1).optional(), content: text(65000).min(1).optional(), title: text(150).optional(), filename: text(100).optional() }).refine(v => Boolean(v.prompt || v.content), { message: 'Fornisci un prompt o un contenuto testuale.' });
+export const artifactEditSchema = z.object({ title: text(150).min(1).optional(), content: text(65000).min(1) });
+export const artifactAiEditSchema = z.object({ instruction: text(2000).min(1), save_directly: z.boolean().default(false) });
