@@ -83,6 +83,13 @@ Sullo stack Supabase: `cd /opt/myai-supabase && docker compose up -d` (ricrea au
 - Rollback runtime: ritaggare `my-ai:before-artifacts` come `my-ai:local` ed eseguire il comando Compose `--no-build`; per tornare anche ai sorgenti usare il tarball in `/opt/my-ai-release-backups/`. Non ci sono migrazioni da annullare né variabili d’ambiente da ripristinare.
 - La generazione reale via DeepSeek non è stata eseguita in collaudo (quota giornaliera dell’account di test già esaurita e nessuna spesa ulteriore necessaria): il contratto JSON è già usato in produzione dagli agenti ed è coperto dai test unitari. La prima generazione reale dall’account dell’utente consuma la quota AI giornaliera come le altre chiamate.
 
+## Isole dinamiche ed emergenti — Inside Out (2026-09-16)
+
+- Pubblicati su LXC 105 e LXC 110: **Arcipelago Dinamico a Isole della Conoscenza**. Macro-isole (`myai_islands`), territori/distretti (`myai_island_districts`), motore di consolidamento notturno/serale via DeepSeek (`src/server/consolidation.ts`), richiamo attivo della memoria e dello stile appreso nella chat, resa grafica procedurale SVG parametrata sui temi (*ancient*, *botanical*, *observatory*, *workshop*, *coastal*). Pulsante manuale per avviare il consolidamento in qualsiasi momento.
+- **Database Supabase dedicato (LXC 105)**: backup preventivo `/opt/myai-supabase/backups/20260916T163908Z`. Applicata migrazione `202609160001_dynamic_islands.sql` con vincoli FK `on delete set null (island_id)` e reload schema PostgREST. RLS attivo e isolato tra account.
+- **App Docker (LXC 110)**: tag rollback `my-ai:before-dynamic-islands`, backup sorgenti senza segreti `/opt/my-ai-release-backups/source-before-dynamic-islands-20260916T165255Z.tar.gz`. Sorgenti sincronizzati, LXC 110 RAM temporaneamente a 6144 MB su Proxmox, compilazione immagine `my-ai:dynamic-islands-candidate`, promozione come `my-ai:local` e riavvio container `my-ai` (status `healthy`). RAM LXC 110 ripristinata a 4096 MB.
+- Verifica: health HTTPS 200 su `https://myai.terraleonum.com` e `https://myai.terraleonum.duckdns.org`.
+
 ## Principio
 
 L'app è un contenitore stateless: i dati vivono nello stack Supabase dedicato, mai nel volume del contenitore. Si può ricreare il container senza perdere nulla. Il LXC 105 resta riservato ai database; il frontend vive su LXC 110 (docker).
