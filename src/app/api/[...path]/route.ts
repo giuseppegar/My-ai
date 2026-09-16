@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ApiError, adminForAccountDeletion, appOrigin, authenticated, capabilities, checked, checkOrigin, db, errorResponse, json, numberEnv, quota, readJson } from '@/server/core';
-import { artifactAiEditSchema, artifactEditSchema, artifactSchema, categorySchema, chatSchema, credentialsSchema, loginSchema, memorySchema, preferencesSchema, uuid, wishSchema } from '@/lib/validation';
-import { defaultPreferences, gaugeDefinitions, type Document, type Gauge } from '@/lib/domain';
+import { artifactAiEditSchema, artifactEditSchema, artifactSchema, categorySchema, chatSchema, credentialsSchema, districtSchema, islandSchema, loginSchema, memorySchema, preferencesSchema, uuid, wishSchema } from '@/lib/validation';
+import { defaultPreferences, gaugeDefinitions, type Category, type Document, type Gauge } from '@/lib/domain';
 import { embeddings, complete, systemPrompt, type AIMessage } from '@/server/ai';
 import { gatherContext, resolveRef, search } from '@/server/retrieval';
 import { extractUrls } from '@/server/web';
@@ -10,12 +10,13 @@ import { generateTextArtifact, updateTextArtifact, aiEditTextArtifact } from '@/
 import { refreshVideo, startVideo, videoColumns } from '@/server/videos';
 import { fileLink, imageForAI, originalFile, processDocument, purgeStorage, removeDocuments, upload } from '@/server/files';
 import { advance, getSession, intervene, startSession } from '@/server/agents';
+import { consolidateUserMemories } from '@/server/consolidation';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
-const memoryColumns = 'id,title,category,kind,content,origin,created_at,updated_at,auto_conversation_id';
+const memoryColumns = 'id,title,category,kind,content,origin,created_at,updated_at,auto_conversation_id,island_id,district_id,consolidated';
 async function allRows(client: SupabaseClient, table: string, columns = '*') {
   const rows: Record<string, unknown>[] = [];
   for (let offset = 0;; offset += 500) {
@@ -38,12 +39,13 @@ async function handle(request: Request): Promise<Response> {
       const client = await db();
       const { data: { user } } = await client.auth.getUser();
       if (!user) return json({ capabilities: caps, user: null });
-      const [memories, conversations, documents, wishes, sessions, settings, activity, videoJobs] = await Promise.all([
+      const [memories, conversations, documents, wishes, sessions, settings, activity, videoJobs, islands, districts] = await Promise.all([
         allRows(client, 'myai_memories', memoryColumns), allRows(client, 'myai_conversations'), allRows(client, 'myai_documents'), allRows(client, 'myai_wishes'), allRows(client, 'myai_agent_sessions'),
         checked(client.from('myai_settings').select('preferences').maybeSingle()), checked(client.rpc('myai_activity')), allRows(client, 'myai_video_jobs', videoColumns),
+        allRows(client, 'myai_islands'), allRows(client, 'myai_island_districts')
       ]);
       const gauges: Gauge[] = gaugeDefinitions.map((g, i) => ({ ...g, value: activity.values[i], related: activity.related[i] }));
-      return json({ capabilities: caps, user: { id: user.id, email: user.email || '' }, memories, conversations, documents, wishes, sessions, videoJobs, preferences: { ...defaultPreferences, ...settings?.preferences }, gauges });
+      return json({ capabilities: caps, user: { id: user.id, email: user.email || '' }, memories, conversations, documents, wishes, sessions, videoJobs, preferences: { ...defaultPreferences, ...settings?.preferences }, gauges, islands, districts });
     }
     if (resource === 'auth') {
       const client = await db();
@@ -94,7 +96,7 @@ async function handle(request: Request): Promise<Response> {
     }
     if (resource === 'conversations') {
       if (method === 'POST') {
-        const data = z.object({ title: z.string().trim().min(1).max(150), category: categorySchema }).parse(await readJson(request));
+        const data = z.object({ title: z.string().trim().min(1).max(150), category: categorySchema, island_id: uuid.nullable().optional(), district_id: uuid.nullable().optional() }).parse(await readJson(request));
         return json(await checked(client.from('myai_conversations').insert(data).select('*').single()), 201);
       }
       if (method === 'GET') return json(await checked(client.from('myai_messages').select('*').eq('conversation_id', uuid.parse(id)).order('created_at')));
@@ -108,6 +110,38 @@ async function handle(request: Request): Promise<Response> {
         await removeDocuments(client, docs);
         await checked(client.from('myai_documents').update({ conversation_id: null }).eq('conversation_id', id).eq('scope','memory'));
         await checked(client.from('myai_conversations').delete().eq('id', id));
+        return json({ ok: true });
+      }
+    }
+    if (resource === 'islands') {
+      if (method === 'POST' && id === 'consolidate') {
+        const result = await consolidateUserMemories(client, user.id, request.signal);
+        return json(result);
+      }
+      if (method === 'POST' && !id) {
+        const input = islandSchema.parse(await readJson(request));
+        const slug = (input.slug || input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')).slice(0, 80).replace(/^-|-$/g, '');
+        const row = await checked(client.from('myai_islands').insert({ ...input, slug }).select('*').single());
+        return json(row, 201);
+      }
+      if (method === 'PATCH' && id) {
+        const input = islandSchema.partial().parse(await readJson(request));
+        const row = await checked(client.from('myai_islands').update(input).eq('id', uuid.parse(id)).select('*').single());
+        return json(row);
+      }
+      if (method === 'DELETE' && id) {
+        await checked(client.from('myai_islands').delete().eq('id', uuid.parse(id)));
+        return json({ ok: true });
+      }
+    }
+    if (resource === 'districts') {
+      if (method === 'POST') {
+        const input = districtSchema.parse(await readJson(request));
+        const row = await checked(client.from('myai_island_districts').insert(input).select('*').single());
+        return json(row, 201);
+      }
+      if (method === 'DELETE' && id) {
+        await checked(client.from('myai_island_districts').delete().eq('id', uuid.parse(id)));
         return json({ ok: true });
       }
     }
@@ -127,7 +161,7 @@ async function handle(request: Request): Promise<Response> {
       const history = await checked(client.from('myai_messages').select('role,content').eq('conversation_id', input.conversation_id).order('created_at', { ascending: false }).limit(16));
       await quota(client);
       const requestMessage = await checked(client.from('myai_messages').insert({ conversation_id: input.conversation_id, role: 'user', category: input.category, content: input.content }).select('id').single());
-      const context = await gatherContext(client, input.content.slice(0, 500), input.conversation_id, input.refs, input.category, input.web && capabilities().web);
+      const context = await gatherContext(client, input.content.slice(0, 500), input.conversation_id, input.refs, input.category, input.web && capabilities().web, input.island_id);
       const parts: Exclude<AIMessage['content'], string> = [{ type: 'text', text: input.content }];
       if (capabilities().vision) for (const doc of context.documents.filter(d => d.mime.startsWith('image/')).slice(0, 3)) {
         parts.push({ type: 'image_url', image_url: { url: await imageForAI(client, doc.id), detail: 'low' } });
@@ -147,7 +181,7 @@ async function handle(request: Request): Promise<Response> {
       await checked(client.from('myai_conversations').select('id').eq('id', input.conversation_id).single());
       if (!capabilities().images) throw new ApiError(503, 'La generazione immagini non è configurata (serve IMAGE_API_KEY).');
       const requestMessage = await checked(client.from('myai_messages').insert({ conversation_id: input.conversation_id, role: 'user', category: input.category, content: `[Genera immagine]\n${input.prompt}` }).select('id').single());
-      const doc = await generateImage(client, user.id, input.prompt, input.conversation_id, input.category);
+      const doc = await generateImage(client, user.id, input.prompt, input.conversation_id, input.category as Category);
       await checked(client.from('myai_messages').insert({ conversation_id: input.conversation_id, role: 'assistant', reply_to_id: requestMessage.id, category: input.category, content: doc.scope === 'memory' ? 'Immagine generata, salvata e catalogata nell’isola. La trovi nella galleria e in Documenti.' : 'Immagine generata e conservata solo in questa chat riservata. La trovi nella galleria e in Documenti.' }));
       return json(doc, 201);
     }
@@ -155,7 +189,7 @@ async function handle(request: Request): Promise<Response> {
       if (method === 'POST' && !id) {
         const input = artifactSchema.parse(await readJson(request));
         await checked(client.from('myai_conversations').select('id').eq('id', input.conversation_id).single());
-        const doc = await generateTextArtifact(client, user.id, input, request.signal);
+        const doc = await generateTextArtifact(client, user.id, { ...input, category: input.category as Category }, request.signal);
         return json(doc, 201);
       }
       if (id) {

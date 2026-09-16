@@ -4,7 +4,7 @@ export const demoData: Bootstrap = {
   capabilities: { configured: false, ai: false, embeddings: false, vision: false, ocr: false, web: false, webProvider: 'tavily', images: false, imageModel: 'gpt-image-1', videos: false, videoModel: 'google/veo-3.1-lite', videoDuration: 4, videoResolution: '720p', accountDeletion: false, model: 'deepseek-flash' },
   user: null,
   preferences: defaultPreferences,
-  conversations: [], documents: [], wishes: [], sessions: [], videoJobs: [],
+  conversations: [], documents: [], wishes: [], sessions: [], videoJobs: [], islands: [], districts: [],
   memories: [
     { id: 'demo-risotto', title: 'Risotto ai funghi, senza fretta', category: 'cucinare', kind: 'content', content: 'ESEMPIO DIMOSTRATIVO — Per due persone: 160 g di riso, 200 g di funghi, brodo vegetale, una piccola cipolla e olio.\n\nFai rosolare la cipolla, aggiungi i funghi e poi il riso. Tosta un minuto e unisci il brodo poco alla volta, mescolando. Controlla la cottura indicata sulla confezione.\n\nUn’idea da adattare ai tuoi gusti e alle tue esigenze alimentari.', origin: 'Esempio, non un tuo ricordo', created_at: created, updated_at: created },
     { id: 'demo-email', title: 'Un’email gentile, ma chiara', category: 'scrivere', kind: 'content', content: 'ESEMPIO DIMOSTRATIVO\n\nBuongiorno, ti scrivo per sapere se ci sono aggiornamenti sul progetto. Se può esserti utile, sono disponibile per un breve confronto.\nGrazie per il tuo tempo e a presto!', origin: 'Esempio, non un tuo ricordo', created_at: created, updated_at: created },

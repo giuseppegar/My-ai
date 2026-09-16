@@ -30,7 +30,14 @@ export async function resolveRef(client: SupabaseClient, ref: ContextRef, query 
   const chunks = await checked(client.from('myai_document_chunks').select('content,page').eq('document_id', row.id).order('page').limit(1000));
   return { ...row, source: ref.source, text: documentPassages(chunks, query, preferredPage, budget) };
 }
-export async function gatherContext(client: SupabaseClient, query: string, conversationId: string, refs: ContextRef[], category: string, web = false) {
+export async function gatherContext(client: SupabaseClient, query: string, conversationId: string, refs: ContextRef[], category: string, web = false, islandId?: string | null) {
+  // Se conversationId è associata a un'isola e non è passato islandId, recuperalo
+  let resolvedIslandId = islandId;
+  if (!resolvedIslandId && conversationId) {
+    const conv = await client.from('myai_conversations').select('island_id').eq('id', conversationId).maybeSingle();
+    if (conv.data?.island_id) resolvedIslandId = conv.data.island_id;
+  }
+
   const found = await search(client, query, null, null, 5);
   const docs = await checked(client.from('myai_documents').select('id,title,status,mime').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(6));
   const unique = new Map<string, ContextRef & { page?: number | null }>();
@@ -43,6 +50,21 @@ export async function gatherContext(client: SupabaseClient, query: string, conve
   const perItem = Math.min(12000, Math.floor(15000 / Math.max(1, selected.length)));
   const parts: string[] = [];
   const images = new Map<string, { id: string; title: string; mime: string; status: string }>();
+
+  // Memoria e stile dell'Isola
+  if (resolvedIslandId) {
+    const { data: island } = await client.from('myai_islands').select('name,description,profile_summary').eq('id', resolvedIslandId).maybeSingle();
+    if (island) {
+      if (island.profile_summary) {
+        parts.push(`[Memoria e Stile dell'Isola "${island.name}"]\n${island.profile_summary}`);
+      }
+      const islandMems = await client.from('myai_memories').select('title,content').eq('island_id', resolvedIslandId).order('updated_at', { ascending: false }).limit(4);
+      if (islandMems.data && islandMems.data.length > 0) {
+        parts.push(`[Ricordi cardine dell'Isola "${island.name}"]\n${islandMems.data.map(m => `• ${m.title}: ${m.content.slice(0, 300)}`).join('\n')}`);
+      }
+    }
+  }
+
   for (const ref of selected) {
     try {
       const content = await resolveRef(client, ref, query, ref.page ?? undefined, perItem);
