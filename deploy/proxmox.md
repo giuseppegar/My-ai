@@ -90,6 +90,13 @@ Sullo stack Supabase: `cd /opt/myai-supabase && docker compose up -d` (ricrea au
 - **App Docker (LXC 110)**: tag rollback `my-ai:before-dynamic-islands`, backup sorgenti senza segreti `/opt/my-ai-release-backups/source-before-dynamic-islands-20260916T165255Z.tar.gz`. Sorgenti sincronizzati, LXC 110 RAM temporaneamente a 6144 MB su Proxmox, compilazione immagine `my-ai:dynamic-islands-candidate`, promozione come `my-ai:local` e riavvio container `my-ai` (status `healthy`). RAM LXC 110 ripristinata a 4096 MB.
 - Verifica: health HTTPS 200 su `https://myai.terraleonum.com` e `https://myai.terraleonum.duckdns.org`.
 
+## Riorganizzazione design Home e Memoria (2026-09-16)
+
+- Pubblicati su LXC 110: Home focalizzata su Chat e Indicatori analogici sottostanti; Isole dell'Arcipelago posizionate nella sezione Memoria integrate con tutta la memoria catalogata.
+- **Database Supabase dedicato (LXC 105)**: non modificato (nessuna migrazione necessaria).
+- **App Docker (LXC 110)**: tag rollback `my-ai:before-design-update`, backup sorgenti senza segreti in `/opt/my-ai-release-backups/`. Sorgenti sincronizzati, RAM LXC 110 temporaneamente a 6144 MB per la build `my-ai:design-candidate`, promozione come `my-ai:local` e riavvio container `my-ai` (`healthy`). RAM LXC 110 ripristinata a 4096 MB.
+- Verifica: health HTTPS 200 su `https://myai.terraleonum.com` e `https://myai.terraleonum.duckdns.org`.
+
 ## Principio
 
 L'app è un contenitore stateless: i dati vivono nello stack Supabase dedicato, mai nel volume del contenitore. Si può ricreare il container senza perdere nulla. Il LXC 105 resta riservato ai database; il frontend vive su LXC 110 (docker).

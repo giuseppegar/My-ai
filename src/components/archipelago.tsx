@@ -32,12 +32,12 @@ export function Archipelago({
     <section className="archipelago-section" aria-labelledby="islands-title">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">MEMORIA VIVA · ISPIRATA A INSIDE OUT</p>
-          <h1 id="islands-title">Il tuo Arcipelago della Mente</h1>
+          <p className="eyebrow">MEMORIA VIVA · LE TUE ISOLE</p>
+          <h1 id="islands-title">L’Arcipelago delle Isole</h1>
           <p>
             {islands.length === 0
-              ? 'Un mare aperto e calmo. Le isole nascono ed evolvono man mano che esplori il mondo.'
-              : 'Isole macro e territori tematici, nutriti dai ricordi e dalle tue conversazioni.'}
+              ? 'Un mare aperto e calmo. Le isole sorgono ed evolvono man mano che esplori il mondo.'
+              : 'Isole tematiche e territori, dove tutta la tua memoria viene catalogata e custodita.'}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -62,7 +62,7 @@ export function Archipelago({
           )}
           <button className="button ghost" disabled={disabled} onClick={onList}>
             <List size={16} />
-            Vista elenco
+            Memoria catalogata ↓
           </button>
         </div>
       </div>

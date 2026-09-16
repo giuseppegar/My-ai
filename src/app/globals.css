@@ -12,7 +12,9 @@
 .tools-toggle .expanded{transform:rotate(180deg)}
 .composer-tools{margin:0 12px 14px;padding:12px;border:1px solid var(--line);border-radius:13px;background:#f8faf3}
 .composer-tools[hidden]{display:none}
-.gauges-section{margin-top:38px}
+.gauges-section{max-width:930px;margin:38px auto 0}
+.section-kicker>div{display:flex;flex-direction:column;gap:2px}
+.cataloged-section{scroll-margin-top:95px}
 .video-jobs{margin:20px 0}
 .video-jobs>h3{display:flex;gap:8px;align-items:center;margin-bottom:8px}
 .video-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:14px;margin-top:12px}
